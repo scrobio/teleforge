@@ -58,8 +58,22 @@ def create_text_watermark_image(
         watermark_img = Image.new("RGBA", (text_width, text_height), (0, 0, 0, 0))
         draw = ImageDraw.Draw(watermark_img)
 
-        fill_color = (255, 255, 255, int(255 * (opacity / 100)))  # White text
-        draw.text((0, -text_bbox[1]), text, font=font, fill=fill_color)
+        fill_opacity = int(255 * (opacity / 100))
+        fill_color = (255, 255, 255, fill_opacity)
+
+        stroke_opacity = int(255 * (opacity / 100))
+        stroke_color = (0, 0, 0, stroke_opacity)
+
+        stroke_width = max(1, int(font_size / 25))
+
+        draw.text(
+            (0, -text_bbox[1]),
+            text,
+            font=font,
+            fill=fill_color,
+            stroke_width=stroke_width,
+            stroke_fill=stroke_color,
+        )
 
         return watermark_img
 
