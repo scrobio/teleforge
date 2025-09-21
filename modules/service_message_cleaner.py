@@ -90,15 +90,18 @@ async def run(client: TelegramClient):
                     ids_to_delete.append(message.id)
 
                     # Delete in batches of 100 for maximum API efficiency.
-                    if len(ids_to_delete) == 100:
-                        progress.update(
-                            task,
-                            description=f"[magenta]Deleting a batch of {len(ids_to_delete)} messages...[/magenta]",
-                        )
-                        await client.delete_messages(target_chat, ids_to_delete)
-                        deleted_count += len(ids_to_delete)
-                        ids_to_delete = []
-                        await asyncio.sleep(1)  # Brief pause to be nice to the API
+                    if getattr(message, "service", False):
+                        ids_to_delete.append(message.id)
+
+                        if len(ids_to_delete) == 100:
+                            progress.update(
+                                task,
+                                description=f"[magenta]Deleting a batch of {len(ids_to_delete)} messages...[/magenta]",
+                            )
+                            await client.delete_messages(target_chat, ids_to_delete)
+                            deleted_count += len(ids_to_delete)
+                            ids_to_delete = []
+                            await asyncio.sleep(1)
 
             # Delete any remaining messages after the loop finishes.
             if ids_to_delete:
