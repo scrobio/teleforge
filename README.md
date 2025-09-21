@@ -2,7 +2,7 @@
 
 **Your automation toolkit for Telegram.**
 
-Teleforge is a modular Python framework, built with Telethon and Rich, that provides a powerful command-line interface (CLI) to run automated tasks on Telegram. Extract media from any chat or send messages to group members, all from a clean, organized, and easily expandable codebase.
+Teleforge is a modular Python framework, built with Telethon and Rich, that provides a powerful command-line interface (CLI) to run a suite of on-demand tasks on Telegram. Analyze chats, manage contacts, export data, apply watermarks, and much more, all from a clean, organized, and easily expandable codebase.
 
 ---
 
@@ -18,11 +18,22 @@ This project includes powerful features, such as bulk messaging, which can be ea
 
 ## ✨ Features
 
--   **Professional Command-Line Interface:** A beautiful and intuitive CLI built with the `rich` library.
--   **Modular Structure:** Features are organized into modules (`downloader`, `messaging`), making maintenance and the addition of new features easy.
--   **Media Downloader:** Download all photos, videos, and documents from any group or channel, including those with protected content.
--   **Member Messenger:** Send direct messages to a selected number of group members, with built-in safety delays to mitigate the risk of account limitation.
--   **Secure Configuration:** Credentials and session files are kept out of version control via `.gitignore`.
+Teleforge is a Swiss Army knife for Telegram power users, providing a collection of independent, on-demand tools:
+
+#### Data & Analytics
+-   **Chat Analyzer:** Get statistics on any chat, including the most active users and a breakdown of shared media types over a custom number of messages.
+-   **Member Exporter:** Export the full member list of any group to a `.csv` file, including user IDs, names, and last seen status.
+-   **Global Search:** Search for a keyword across *all* your chats (groups, channels, DMs) and save the results to a detailed text file.
+-   **Chat History Archiver:** Create a full backup of a chat's text history to a `.txt` or `.json` file, with flexible date filters (all-time, today, yesterday, or a custom range).
+
+#### Content & Media Management
+-   **Advanced Media Downloader:** Download media from any chat with powerful filters for media type (photos, videos, docs) and/or a specific user.
+-   **Image Watermarker:** Automatically apply a custom watermark to a batch of images from a local folder and upload them directly to a chat, with options for position, scale, and opacity.
+
+#### Account & Chat Management
+-   **Contact Manager:** Clean up your address book by finding and bulk-deleting deleted accounts or long-inactive contacts.
+-   **Bulk Archiver:** Organize your chat list by archiving hundreds of chats at once based on rules like mute status or inactivity.
+-   **Bulk Messenger:** Send direct messages to a random subset of group members, with built-in safety delays to mitigate spam detection.
 
 ---
 
@@ -85,27 +96,7 @@ python main.py
 ```
 
 -   **First Login:** On the first run, the script will ask for your phone number, the login code sent to you by Telegram, and, if applicable, your two-factor authentication (2FA) password. A session file will be saved for future logins.
--   **Navigate the Menu:** Use the numbers to choose the desired feature.
-
----
-
-## 🏗️ Project Structure
-
-```
-/Teleforge/
-|-- main.py               # Main entry point, with the menu
-|-- modules/              # Folder for each feature/module
-|   |-- downloader.py
-|   |-- messaging.py
-|-- core/                 # Core functions (connection)
-|   |-- client.py
-|-- utils/                # Utility functions (chat selector)
-|   |-- chat_selector.py
-|-- config.ini            # Your credentials (IGNORED BY GIT)
-|-- requirements.txt      # Project dependencies
-|-- .gitignore            # Files to be ignored by Git
-|-- README.md             # This file
-```
+-   **Navigate the Menu:** Use the numbers to choose the desired feature from the main menu.
 
 ---
 
