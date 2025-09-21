@@ -4,13 +4,14 @@ Image Watermarker Module - Teleforge
 
 This module provides a powerful tool for content creators to apply a
 watermark to a batch of images and upload them directly to a Telegram chat.
-It uses the Pillow library for image manipulation and offers various options
-for customization, such as position, scale, and opacity.
+It supports both image-based (e.g., a logo) and text-based watermarks,
+offering customization options for position, scale, and opacity.
 """
 import io
 import os
+from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress
@@ -21,74 +22,126 @@ from utils.chat_selector import select_chat
 
 console = Console()
 
+try:
+    PROJECT_ROOT = Path(__file__).resolve().parent.parent
+    FONT_PATH = PROJECT_ROOT / "assets" / "fonts" / "arial.ttf"
+except NameError:
+    # Fallback for some environments where __file__ might not be defined
+    FONT_PATH = "assets/fonts/arial.ttf"
 
-def apply_watermark(
-    image_path: str, watermark_path: str, options: dict
-) -> io.BytesIO | None:
+
+def create_text_watermark_image(
+    text: str, size: tuple, font_path: str, opacity: int, scale: float
+) -> Image.Image | None:
     """
-    Applies a watermark to a single image using Pillow.
-
-    This function handles opening the images, resizing the watermark proportionally,
-    adjusting its opacity, calculating its position, and compositing it onto the
-    base image. The final result is returned as an in-memory bytes object to
-    avoid writing temporary files to disk.
+    Creates an in-memory Pillow Image of a text watermark.
 
     Args:
-        image_path (str): The file path to the base image.
-        watermark_path (str): The file path to the watermark image.
-        options (dict): A dictionary containing 'scale', 'opacity', and 'position'.
+        text (str): The text content of the watermark.
+        size (tuple): The (width, height) of the base image to scale against.
+        font_path (str): The file path to the .ttf or .otf font file.
+        opacity (int): The desired opacity percentage (0-100).
+        scale (float): The desired font size, calculated as a percentage of the image width.
 
     Returns:
-        io.BytesIO | None: An in-memory bytes object of the final JPEG image,
+        Image.Image | None: A Pillow Image object of the rendered text, or None on error.
+    """
+    try:
+        font_size = int((size[0] * (scale / 100)) / len(text) * 1.8)
+        font = ImageFont.truetype(font_path, font_size)
+
+        temp_draw = ImageDraw.Draw(Image.new("RGBA", (0, 0)))
+        text_bbox = temp_draw.textbbox((0, 0), text, font=font)
+        text_width = text_bbox[2] - text_bbox[0]
+        text_height = text_bbox[3] - text_bbox[1]
+
+        watermark_img = Image.new("RGBA", (text_width, text_height), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(watermark_img)
+
+        fill_color = (255, 255, 255, int(255 * (opacity / 100)))  # White text
+        draw.text((0, -text_bbox[1]), text, font=font, fill=fill_color)
+
+        return watermark_img
+
+    except FileNotFoundError:
+        console.print(
+            f"[red]Error: Font file not found at '{font_path}'. Please check the FONT_PATH variable.[/red]"
+        )
+        return None
+    except Exception as e:
+        console.print(f"[red]Error creating text watermark: {e}[/red]")
+        return None
+
+
+def apply_watermark(
+    image_path: str, watermark_asset: str | Image.Image, options: dict
+) -> io.BytesIO | None:
+    """
+    Applies a watermark (either an image or text) to a base image.
+
+    Args:
+        image_path (str): File path to the base image.
+        watermark_asset (str | Image.Image): Either a file path to the watermark image
+            or a pre-rendered Pillow Image object (for text watermarks).
+        options (dict): A dictionary containing customization settings.
+
+    Returns:
+        io.BytesIO | None: An in-memory bytes object of the final watermarked image,
         or None if an error occurred.
     """
     try:
-        with Image.open(image_path).convert("RGBA") as base_image, Image.open(
-            watermark_path
-        ).convert("RGBA") as watermark:
+        with Image.open(image_path).convert("RGBA") as base_image:
+            final_watermark: Image.Image
 
-            # Resize watermark to be a percentage of the base image's width.
-            ratio = watermark.height / watermark.width
-            new_watermark_width = int(base_image.width * (options["scale"] / 100))
-            new_watermark_height = int(new_watermark_width * ratio)
-            watermark = watermark.resize(
-                (new_watermark_width, new_watermark_height), Image.Resampling.LANCZOS
-            )
+            # Process image-based watermark.
+            if isinstance(watermark_asset, str):
+                with Image.open(watermark_asset).convert("RGBA") as img_watermark:
+                    ratio = img_watermark.height / img_watermark.width
+                    new_width = int(base_image.width * (options["scale"] / 100))
+                    final_watermark = img_watermark.resize(
+                        (new_width, int(new_width * ratio)), Image.Resampling.LANCZOS
+                    )
+                    if options["opacity"] < 100:
+                        alpha = final_watermark.getchannel("A").point(
+                            lambda p: p * (options["opacity"] / 100)
+                        )
+                        final_watermark.putalpha(alpha)
+            # Use the pre-rendered text watermark image.
+            else:
+                final_watermark = watermark_asset
 
-            # Adjust opacity by modifying the alpha channel.
-            if options["opacity"] < 100:
-                alpha = watermark.getchannel("A")
-                new_alpha = alpha.point(lambda p: p * (options["opacity"] / 100))
-                watermark.putalpha(new_alpha)
-
-            # Calculate the paste position based on user's choice.
+            # Determine position. Text watermark is always centered.
             padding = 10
-            positions = {
-                "1": (
-                    base_image.width - watermark.width - padding,
-                    base_image.height - watermark.height - padding,
-                ),
-                "2": (
-                    padding,
-                    base_image.height - watermark.height - padding,
-                ),
-                "3": (
-                    base_image.width - watermark.width - padding,
-                    padding,
-                ),
-                "4": (padding, padding),
-                "5": (
-                    int((base_image.width - watermark.width) / 2),
-                    int((base_image.height - watermark.height) / 2),
-                ),
-            }
-            position = positions.get(options["position"], positions["1"])
+            if options["type"] == "text":
+                position = (
+                    int((base_image.width - final_watermark.width) / 2),
+                    int((base_image.height - final_watermark.height) / 2),
+                )
+            else:
+                positions = {
+                    "1": (
+                        base_image.width - final_watermark.width - padding,
+                        base_image.height - final_watermark.height - padding,
+                    ),
+                    "2": (
+                        padding,
+                        base_image.height - final_watermark.height - padding,
+                    ),
+                    "3": (base_image.width - final_watermark.width - padding, padding),
+                    "4": (padding, padding),
+                    "5": (
+                        int((base_image.width - final_watermark.width) / 2),
+                        int((base_image.height - final_watermark.height) / 2),
+                    ),
+                }
+                position = positions.get(options["position"], positions["1"])
 
+            # Composite the watermark onto the base image.
             transparent_layer = Image.new("RGBA", base_image.size, (0, 0, 0, 0))
-            transparent_layer.paste(watermark, position, mask=watermark)
-
+            transparent_layer.paste(final_watermark, position, mask=final_watermark)
             final_image = Image.alpha_composite(base_image, transparent_layer)
 
+            # Save the final image to an in-memory bytes object.
             final_image_bytes = io.BytesIO()
             final_image.convert("RGB").save(
                 final_image_bytes, format="JPEG", quality=95
@@ -107,26 +160,13 @@ def apply_watermark(
 
 async def run(client: TelegramClient):
     """
-    Orchestrates the process of applying a watermark to a folder of images and sending them.
-
-    The workflow includes:
-    1. Prompting for the source folder, watermark file, and destination chat.
-    2. Prompting for customization options (position, scale, opacity).
-    3. Finding all image files in the source folder.
-    4. Iterating through each image, applying the watermark, and uploading it.
-    5. Displaying progress and a final summary.
-
-    Args:
-        client (TelegramClient): The active and connected Telethon client instance.
+    Orchestrates applying a watermark to a folder of images and sending them.
     """
     console.clear()
     console.print(
         Panel(
             "[bold_italic medium_purple]Image Watermarker Module[/bold_italic medium_purple]"
         )
-    )
-    console.print(
-        "[dim]Tip: For best results, use a transparent .png file as your watermark.[/dim]"
     )
 
     source_folder = Prompt.ask(
@@ -136,12 +176,52 @@ async def run(client: TelegramClient):
         console.print("[red]Error: The specified path is not a valid directory.[/red]")
         return
 
-    watermark_path = Prompt.ask(
-        "[bold]Enter the path to your watermark image file (e.g., logo.png)[/bold]"
+    # Choose watermark type and get specific options.
+    console.print("\n[bold]Select watermark type:[/bold]")
+    console.print("[cyan]1[/cyan] - Text Watermark (e.g., @mychannel)")
+    console.print("[cyan]2[/cyan] - Image Watermark (e.g., logo.png)")
+    watermark_type_choice = Prompt.ask(
+        "Enter your choice", choices=["1", "2"], default="1"
     )
-    if not os.path.isfile(watermark_path):
-        console.print("[red]Error: The specified path is not a valid file.[/red]")
-        return
+
+    watermark_asset = None
+    watermark_options = {}
+
+    if watermark_type_choice == "1":  # Text
+        watermark_options["type"] = "text"
+        watermark_asset = Prompt.ask("[bold]Enter the text for the watermark[/bold]")
+        watermark_options["scale"] = IntPrompt.ask(
+            "[bold]Text size (approx. % of image width)[/bold]", default=25
+        )
+        watermark_options["opacity"] = IntPrompt.ask(
+            "[bold]Text opacity (1-100%)[/bold]", default=50
+        )
+
+    else:  # Image
+        watermark_options["type"] = "image"
+        watermark_asset = Prompt.ask(
+            "[bold]Enter the path to your watermark image file (e.g., logo.png)[/bold]"
+        )
+        if not os.path.isfile(watermark_asset):
+            console.print("[red]Error: The specified path is not a valid file.[/red]")
+            return
+
+        console.print("\n[bold]Select a position for the image watermark:[/bold]")
+        console.print(
+            "[cyan]1[/cyan] - Bottom-Right [dim](Default)[/dim]",
+            "  [cyan]2[/cyan] - Bottom-Left",
+            "  [cyan]3[/cyan] - Top-Right",
+        )
+        console.print("[cyan]4[/cyan] - Top-Left", "        [cyan]5[/cyan] - Center")
+        watermark_options["position"] = Prompt.ask(
+            "Enter position choice", choices=["1", "2", "3", "4", "5"], default="1"
+        )
+        watermark_options["scale"] = IntPrompt.ask(
+            "[bold]Watermark image size (% of image width)[/bold]", default=15
+        )
+        watermark_options["opacity"] = IntPrompt.ask(
+            "[bold]Watermark image opacity (1-100%)[/bold]", default=70
+        )
 
     target_chat = await select_chat(
         client, "Select the chat to send the watermarked images to:"
@@ -149,21 +229,7 @@ async def run(client: TelegramClient):
     if not target_chat:
         return
 
-    console.print("\n[bold]Select a position for the watermark:[/bold]")
-    console.print("[cyan]1[/cyan] - Bottom-Right [dim](Default)[/dim]")
-    console.print("[cyan]2[/cyan] - Bottom-Left")
-    console.print("[cyan]3[/cyan] - Top-Right")
-    console.print("[cyan]4[/cyan] - Top-Left")
-    console.print("[cyan]5[/cyan] - Center")
-    position = Prompt.ask(
-        "Enter your choice", choices=["1", "2", "3", "4", "5"], default="1"
-    )
-
-    scale = IntPrompt.ask("[bold]Watermark size (% of image width)[/bold]", default=15)
-    opacity = IntPrompt.ask("[bold]Watermark opacity (1-100%)[/bold]", default=70)
-
-    options = {"position": position, "scale": scale, "opacity": opacity}
-
+    # Find and process images.
     image_files = [
         f
         for f in os.listdir(source_folder)
@@ -187,17 +253,29 @@ async def run(client: TelegramClient):
                 task, description=f"[purple]Processing '{filename}'[/purple]"
             )
 
-            final_image_bytes = apply_watermark(image_path, watermark_path, options)
+            watermark_to_apply = watermark_asset
+            if watermark_options["type"] == "text":
+                with Image.open(image_path) as img:
+                    watermark_to_apply = create_text_watermark_image(
+                        watermark_asset,
+                        img.size,
+                        FONT_PATH,
+                        watermark_options["opacity"],
+                        watermark_options["scale"],
+                    )
+                if not watermark_to_apply:
+                    continue
+
+            final_image_bytes = apply_watermark(
+                image_path, watermark_to_apply, watermark_options
+            )
 
             if final_image_bytes:
                 progress.update(
                     task, description=f"[purple]Uploading '{filename}'[/purple]"
                 )
                 await client.send_file(
-                    target_chat,
-                    final_image_bytes,
-                    force_document=False,
-                    caption="",
+                    target_chat, final_image_bytes, force_document=False, caption=""
                 )
 
             progress.update(task, advance=1)
