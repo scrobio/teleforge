@@ -24,6 +24,7 @@ from modules.global_search import run as run_global_search
 from modules.bulk_archiver import run as run_bulk_archiver
 from modules.chat_archiver import run as run_chat_archiver
 from modules.watermarker import run as run_watermarker
+from modules.service_message_cleaner import run as run_service_message_cleaner
 
 console = Console()
 
@@ -50,6 +51,7 @@ def display_menu():
 [orange1]7[/orange1] - [bold]Bulk Archiver:[/bold] Archive multiple chats based on rules.
 [green_yellow]8[/green_yellow] - [bold]Chat Archiver:[/bold] Export a chat's text history to a file.
 [medium_purple]9[/medium_purple] - [bold]Watermarker:[/bold] Apply a watermark to a folder of images.
+[bright_magenta]10[/bright_magenta] - [bold]Service Msg Cleaner:[/bold] Delete join/leave messages from a group.
 
 [red]0[/red] - [bold]Exit[/bold]
     """
@@ -82,7 +84,8 @@ async def main():
             "6": run_global_search,
             "7": run_bulk_archiver,
             "8": run_chat_archiver,
-            "9": run_watermarker,  # NOVA LINHA
+            "9": run_watermarker,
+            "10": run_service_message_cleaner,  # NOVA LINHA
         }
         while True:
             # Clear the console screen for a cleaner interface on each menu cycle.
@@ -93,7 +96,7 @@ async def main():
 
             choice = Prompt.ask(
                 "[bold]Enter your choice[/bold]",
-                choices=["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"],
+                choices=["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "0"],
                 default="0",
             )
 
